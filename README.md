@@ -7,11 +7,11 @@ install, no running process, no login required.
 ## What it does
 
 A scheduled GitHub Actions workflow runs [`catalog/poll.py`](catalog/poll.py)
-once a day. For each tracked channel (`latest`, `client`):
+once a day:
 
-1. Fetch `https://gamemedia2.spiralknights.com/spiral/<channel>/getdown.txt` and
+1. Fetch `https://gamemedia2.spiralknights.com/spiral/latest/getdown.txt` and
    read its `version`.
-2. If that version is already recorded under `versions/<channel>/`, do nothing.
+2. If that version is already recorded under `versions/latest/`, do nothing.
 3. Otherwise resolve the version's `appbase` and save its three text manifests:
 
    ```
@@ -21,6 +21,10 @@ once a day. For each tracked channel (`latest`, `client`):
    ```
 
    and append a row to [`TIMELINE.md`](TIMELINE.md).
+
+Only the `latest/` channel is tracked. The `client/` channel has been frozen at
+`20260209004019` (the last pre-64-bit build) since February 2026; pass
+`--channels client` for a one-off capture if it ever moves.
 
 `state/last-check.json` is rewritten every run, so the commit history is also a
 liveness record for the scheduled job.

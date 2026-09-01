@@ -40,7 +40,10 @@ TIMELINE_FILE = ROOT / "TIMELINE.md"
 TIMELINE_MARKER = "<!-- rows -->"
 
 DEFAULT_BASE = "https://gamemedia2.spiralknights.com/spiral"
-CHANNELS = ("latest", "client")
+# Only latest/ is tracked. client/ has been frozen at 20260209004019 (the last
+# pre-64-bit build) since Feb 2026 and is not expected to move again; capture it
+# by hand with --channels client if that ever changes.
+CHANNELS = ("latest",)
 MANIFESTS = ("getdown.txt", "digest.txt", "digest2.txt")
 
 
