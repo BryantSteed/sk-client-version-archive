@@ -1,0 +1,45 @@
+name: poll
+
+on:
+  schedule:
+    # Daily at 11:17 UTC. Off the hour to avoid GitHub's top-of-hour scheduling
+    # congestion. SK's observed release cadence is measured in days, so daily
+    # polling comfortably beats it.
+    - cron: "17 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Poll Spiral Knights Getdown channels
+        id: poll
+        run: python -m catalog.poll
+
+      - name: Commit any changes
+        if: always()
+        env:
+          COMMIT_MSG: ${{ steps.poll.outputs.commit_msg }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git commit -m "${COMMIT_MSG:-catalog: poll}"
+          git push

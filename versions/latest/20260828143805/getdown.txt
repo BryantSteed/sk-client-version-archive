@@ -1,0 +1,137 @@
+# General information
+version = 20260828143805
+appbase = http://gamemedia2.spiralknights.com/spiral/%VERSION%
+latest = http://gamemedia2.spiralknights.com/spiral/latest/getdown.txt
+
+# fallback colors in case of image problems
+ui.background = 000000
+ui.progress_bar = 438C93
+ui.percents.UPDATE_JAVA = 1
+ui.percents.VERIFY_METADATA = 2, 70, 95
+ui.percents.DOWNLOAD = 5
+ui.percents.PATCH = 50
+ui.percents.VERIFY_RESOURCES = 75, 97
+# the rest of the percents are ok at default values
+
+# Allow verify to take a really long time
+verify_timeout = 240
+
+# These all go into the classpath
+code = code/config.jar
+code = code/projectx-config.jar
+code = code/projectx-pcode.jar
+code = code/lwjgl.jar
+code = code/lwjgl-opengl.jar
+code = code/lwjgl-openal.jar
+code = code/lwjgl-glfw.jar
+code = code/lwjgl-jawt.jar
+code = code/lwjgl3-awt.jar
+# LWJGL 3 native jars (per-platform, on classpath for auto-extraction)
+code = [linux] code/lwjgl-natives-linux.jar
+code = [linux] code/lwjgl-opengl-natives-linux.jar
+code = [linux] code/lwjgl-openal-natives-linux.jar
+code = [linux] code/lwjgl-glfw-natives-linux.jar
+code = [mac os x] code/lwjgl-natives-macos.jar
+code = [mac os x] code/lwjgl-natives-macos-arm64.jar
+code = [mac os x] code/lwjgl-opengl-natives-macos.jar
+code = [mac os x] code/lwjgl-opengl-natives-macos-arm64.jar
+code = [mac os x] code/lwjgl-openal-natives-macos.jar
+code = [mac os x] code/lwjgl-openal-natives-macos-arm64.jar
+code = [mac os x] code/lwjgl-glfw-natives-macos.jar
+code = [mac os x] code/lwjgl-glfw-natives-macos-arm64.jar
+code = [windows] code/lwjgl-natives-windows.jar
+code = [windows] code/lwjgl-opengl-natives-windows.jar
+code = [windows] code/lwjgl-openal-natives-windows.jar
+code = [windows] code/lwjgl-glfw-natives-windows.jar
+code = code/commons-beanutils.jar
+code = code/commons-digester.jar
+code = code/commons-logging.jar
+
+# Getdown doesn't go in the classpath; this is just for auto-upgrade
+resource = code/getdown-pro-new.jar
+
+# Native library bits (LWJGL 3 natives are auto-extracted from classpath JARs above)
+# Only non-LWJGL natives need to be listed here for java.library.path
+resource = [linux] native/libkeybd.so
+resource = [linux] native/libsteam_api.so
+resource = [windows] native/steam_api.dll
+resource = [windows] native/steam_api64.dll
+resource = [mac os x] native/libsteam_api.dylib
+
+resource = [linux] native/libdiscord_partner_sdk.so
+resource = [windows] native/discord_partner_sdk.dll
+resource = [mac os x] native/libdiscord_partner_sdk.dylib
+
+# Our media resources
+resource = background.png
+resource = progress.png
+resource = icon_128.png
+resource = icon_32.png
+resource = icon_16.png
+
+# Media resources that will be unpacked
+uresource = rsrc/intro-bundle.jar
+
+# Define our auxiliary resource groups
+auxgroups = full
+
+# Full game resources
+full.uresource = rsrc/full-music-bundle.jar
+full.uresource = rsrc/full-rest-bundle.jar
+
+# Version requirements for our JVM
+java_version = 25000000
+java_location = [windows] /spiral/client/java_windows.jar
+java_location = [linux] /spiral/client/java_linux.jar
+java_location = [mac os x] /spiral/client/java_macos.jar
+
+# Parameters passed to the JVM
+jvmarg = -Djava.library.path=%APPDIR%/native
+jvmarg = -Dorg.lwjgl.util.NoChecks=true
+jvmarg = -Dsun.java2d.d3d=false
+jvmarg = -Dappdir=%APPDIR%
+jvmarg = -Dresource_dir=%APPDIR%/rsrc
+jvmarg = -XX:-CreateCoredumpOnCrash
+jvmarg = -XX:+SuppressFatalErrorMessage
+
+# These are required for guava/cache code, hopefully at some point these are fixed
+jvmarg = --add-opens=java.base/java.lang=ALL-UNNAMED
+jvmarg = --add-opens=java.base/java.util=ALL-UNNAMED
+
+# Required for LWJGL 3 native access and FFM libraries as well
+jvmarg = --enable-native-access=ALL-UNNAMED
+
+# Specify the crucible directory
+jvmarg = -Dcrucible.dir=../crucible
+
+# Fix process launching on macos in case installed application... wrong architecture? Unknown.
+jvmarg = [mac os x] -Djdk.lang.Process.launchMechanism=FORK
+
+# The main Java class
+class = com.threerings.projectx.client.ProjectXApp
+
+# Lets us pass "client" as the app id and use the rest of the command line as app arguments
+client.class = com.threerings.projectx.client.ProjectXApp
+
+# Crucible resources and editor
+uresource = crucible.jar
+crucible-editor.class = com.threerings.projectx.tools.CrucibleSceneEditor
+# Configure the update UI
+ui.name = Spiral Knights
+ui.background_image = background.png
+ui.progress_image = progress.png
+ui.progress = 17, 321, 458, 22
+ui.progress_text = FFFFFF
+ui.status = 17, 245, 458, 68
+ui.status_text = FFFFFF
+ui.icon = icon_128.png
+ui.icon = icon_32.png
+ui.icon = icon_16.png
+ui.mac_dock_icon = rsrc/ui/icon/desktop.icns
+ui.install_error = http://wiki.spiralknights.com/Technical_issues_FAQ
+ui.install_error.de = http://wiki.spiralknights.com/de/Technical_issues_FAQ
+ui.install_error.es = http://wiki.spiralknights.com/es/Technical_issues_FAQ
+ui.install_error.fr = http://wiki.spiralknights.com/fr/Technical_issues_FAQ
+ui.patch_notes = 365, 250, 112, 26
+ui.patch_notes_url = https://forums.spiralknights.com/en/forum/8
+#ui.patch_notes_url.es = https://forums.spiralknights.com/es/forum/45
