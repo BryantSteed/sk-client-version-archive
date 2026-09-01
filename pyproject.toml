@@ -10,9 +10,6 @@ dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# byu_pytest_utils is a machine-global plugin on some dev boxes that crashes
-# collection here; it is irrelevant to this project.
-addopts = "-p no:byu_pytest_utils"
 
 [tool.ruff]
 line-length = 100
