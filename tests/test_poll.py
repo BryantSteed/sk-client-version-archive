@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+from collections.abc import Callable
 
 import pytest
 
@@ -11,23 +12,26 @@ from catalog import poll
 from catalog.fetch import FetchError, Unavailable
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
-GETDOWN_2020 = (FIXTURES / "getdown-20201019172329.txt").read_text(encoding="utf-8")
-DIGEST_2020 = (FIXTURES / "digest-20201019172329.txt").read_text(encoding="utf-8")
+GETDOWN_2020: str = (FIXTURES / "getdown-20201019172329.txt").read_text(encoding="utf-8")
+DIGEST_2020: str = (FIXTURES / "digest-20201019172329.txt").read_text(encoding="utf-8")
 
 VERSION = "20201019172329"
 BASE = "https://example.test/spiral"
+APPBASE = f"https://gamemedia2.spiralknights.com/spiral/{VERSION}"
+
+FetchStub = Callable[..., str]
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
     monkeypatch.setattr(poll, "VERSIONS_DIR", tmp_path / "versions")
     monkeypatch.setattr(poll, "STATE_FILE", tmp_path / "state" / "last-check.json")
     monkeypatch.setattr(poll, "TIMELINE_FILE", tmp_path / "TIMELINE.md")
     return tmp_path
 
 
-def _fake_fetch(responses: dict[str, str]):
-    def _fetch(url, **_kw):
+def _fake_fetch(responses: dict[str, str]) -> FetchStub:
+    def _fetch(url: str, **_kw: object) -> str:
         if url in responses:
             return responses[url]
         raise Unavailable(f"403: {url}", 403)
@@ -35,12 +39,12 @@ def _fake_fetch(responses: dict[str, str]):
     return _fetch
 
 
-def test_new_version_is_captured(repo, monkeypatch):
+def test_new_version_is_captured(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     responses = {
         f"{BASE}/latest/getdown.txt": GETDOWN_2020,
-        f"https://gamemedia2.spiralknights.com/spiral/{VERSION}/getdown.txt": GETDOWN_2020,
-        f"https://gamemedia2.spiralknights.com/spiral/{VERSION}/digest.txt": DIGEST_2020,
-        # digest2.txt intentionally absent -> 404 -> captured as None
+        f"{APPBASE}/getdown.txt": GETDOWN_2020,
+        f"{APPBASE}/digest.txt": DIGEST_2020,
+        # digest2.txt intentionally absent -> 403 -> captured as None
     }
     monkeypatch.setattr(poll, "fetch_text", _fake_fetch(responses))
 
@@ -57,7 +61,7 @@ def test_new_version_is_captured(repo, monkeypatch):
     assert poll.TIMELINE_MARKER in (repo / "TIMELINE.md").read_text(encoding="utf-8")
 
 
-def test_known_version_is_unchanged(repo, monkeypatch):
+def test_known_version_is_unchanged(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (repo / "versions" / "latest" / VERSION).mkdir(parents=True)
     monkeypatch.setattr(
         poll, "fetch_text", _fake_fetch({f"{BASE}/latest/getdown.txt": GETDOWN_2020})
@@ -69,11 +73,11 @@ def test_known_version_is_unchanged(repo, monkeypatch):
     assert result["captured"] == []
 
 
-def test_dry_run_writes_nothing(repo, monkeypatch):
+def test_dry_run_writes_nothing(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     responses = {
         f"{BASE}/latest/getdown.txt": GETDOWN_2020,
-        f"https://gamemedia2.spiralknights.com/spiral/{VERSION}/getdown.txt": GETDOWN_2020,
-        f"https://gamemedia2.spiralknights.com/spiral/{VERSION}/digest.txt": DIGEST_2020,
+        f"{APPBASE}/getdown.txt": GETDOWN_2020,
+        f"{APPBASE}/digest.txt": DIGEST_2020,
     }
     monkeypatch.setattr(poll, "fetch_text", _fake_fetch(responses))
 
@@ -84,7 +88,9 @@ def test_dry_run_writes_nothing(repo, monkeypatch):
     assert not (repo / "TIMELINE.md").exists()
 
 
-def test_html_error_page_is_rejected(repo, monkeypatch):
+def test_html_error_page_is_rejected(
+    repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(
         poll,
         "fetch_text",
@@ -94,19 +100,23 @@ def test_html_error_page_is_rejected(repo, monkeypatch):
         poll.check_channel("latest", BASE, dry_run=False)
 
 
-def test_version_mismatch_in_appbase_is_rejected(repo, monkeypatch):
+def test_version_mismatch_in_appbase_is_rejected(
+    repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     wrong = GETDOWN_2020.replace(VERSION, "20991231235959")
     responses = {
         f"{BASE}/latest/getdown.txt": GETDOWN_2020,
-        f"https://gamemedia2.spiralknights.com/spiral/{VERSION}/getdown.txt": wrong,
+        f"{APPBASE}/getdown.txt": wrong,
     }
     monkeypatch.setattr(poll, "fetch_text", _fake_fetch(responses))
     with pytest.raises(poll.ValidationError):
         poll.check_channel("latest", BASE, dry_run=False)
 
 
-def test_main_all_unreachable_exits_1(repo, monkeypatch):
-    def _boom(url, **_kw):
+def test_main_all_unreachable_exits_1(
+    repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(url: str, **_kw: object) -> str:
         raise FetchError("network down")
 
     monkeypatch.setattr(poll, "fetch_text", _boom)
@@ -116,7 +126,9 @@ def test_main_all_unreachable_exits_1(repo, monkeypatch):
     assert "error" in state["channels"]["latest"]
 
 
-def test_main_unchanged_exits_0_and_writes_state(repo, monkeypatch):
+def test_main_unchanged_exits_0_and_writes_state(
+    repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     (repo / "versions" / "latest" / VERSION).mkdir(parents=True)
     (repo / "versions" / "client" / VERSION).mkdir(parents=True)
     monkeypatch.setattr(

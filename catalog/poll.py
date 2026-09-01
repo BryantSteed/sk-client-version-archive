@@ -1,9 +1,7 @@
-"""Poll Spiral Knights' Getdown channels and record any new client versions.
+"""Poll Spiral Knights' Getdown ``latest/`` channel and record any new version.
 
-For each tracked channel (``latest``, ``client``):
-
-1. GET ``<base>/<channel>/getdown.txt`` and read its ``version``.
-2. If ``versions/<channel>/<version>/`` already exists, nothing to do.
+1. GET ``<base>/latest/getdown.txt`` and read its ``version``.
+2. If ``versions/latest/<version>/`` already exists, nothing to do.
 3. Otherwise resolve that version's ``appbase`` and capture the three text
    manifests (``getdown.txt``, ``digest.txt``, ``digest2.txt``) into the repo,
    then append a row to ``TIMELINE.md``.
@@ -23,6 +21,7 @@ import json
 import os
 import pathlib
 import sys
+from typing import Final, Literal, TypedDict
 
 from .fetch import FetchError, Unavailable, fetch_text
 from .getdown import (
@@ -33,18 +32,34 @@ from .getdown import (
     parse_kv,
 )
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-VERSIONS_DIR = ROOT / "versions"
-STATE_FILE = ROOT / "state" / "last-check.json"
-TIMELINE_FILE = ROOT / "TIMELINE.md"
-TIMELINE_MARKER = "<!-- rows -->"
+ROOT: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent.parent
+VERSIONS_DIR: Final[pathlib.Path] = ROOT / "versions"
+STATE_FILE: Final[pathlib.Path] = ROOT / "state" / "last-check.json"
+TIMELINE_FILE: Final[pathlib.Path] = ROOT / "TIMELINE.md"
+TIMELINE_MARKER: Final[str] = "<!-- rows -->"
 
-DEFAULT_BASE = "https://gamemedia2.spiralknights.com/spiral"
+DEFAULT_BASE: Final[str] = "https://gamemedia2.spiralknights.com/spiral"
 # Only latest/ is tracked. client/ has been frozen at 20260209004019 (the last
 # pre-64-bit build) since Feb 2026 and is not expected to move again; capture it
 # by hand with --channels client if that ever changes.
-CHANNELS = ("latest",)
-MANIFESTS = ("getdown.txt", "digest.txt", "digest2.txt")
+CHANNELS: Final[tuple[str, ...]] = ("latest",)
+MANIFESTS: Final[tuple[str, ...]] = ("getdown.txt", "digest.txt", "digest2.txt")
+
+ChannelStatus = Literal["new", "unchanged"]
+
+
+class ChannelResult(TypedDict):
+    """The outcome of checking one channel."""
+
+    channel: str
+    version: str
+    status: ChannelStatus
+    captured: list[str]  # manifest filenames actually written / fetched
+    unavailable: list[str]  # manifest filenames that 403'd or 404'd
+
+
+#: ``(channel, message)`` — a channel that could not be checked this run.
+ChannelError = tuple[str, str]
 
 
 class ValidationError(Exception):
@@ -56,40 +71,40 @@ def _now() -> str:
 
 
 def _resolve_appbase(channel_getdown: dict[str, list[str]], version: str, base: str) -> str:
-    template = get_appbase_template(channel_getdown) or f"{base}/%VERSION%"
-    appbase = template.replace("%VERSION%", version)
+    template: str = get_appbase_template(channel_getdown) or f"{base}/%VERSION%"
+    appbase: str = template.replace("%VERSION%", version)
     if appbase.startswith("http://"):
         appbase = "https://" + appbase[len("http://") :]
     return appbase.rstrip("/")
 
 
-def check_channel(channel: str, base: str, *, dry_run: bool) -> dict:
-    """Check one channel. Returns a result dict; may write files unless dry_run."""
-    channel_url = f"{base}/{channel}/getdown.txt"
-    text = fetch_text(channel_url)
+def check_channel(channel: str, base: str, *, dry_run: bool) -> ChannelResult:
+    """Check one channel. Returns a result dict; writes files unless ``dry_run``."""
+    channel_url: str = f"{base}/{channel}/getdown.txt"
+    text: str = fetch_text(channel_url)
     if not is_valid_getdown(text):
         raise ValidationError(f"{channel_url} did not return a valid getdown.txt")
 
-    parsed = parse_kv(text)
-    version = get_version(parsed)
-    dest = VERSIONS_DIR / channel / version
+    parsed: dict[str, list[str]] = parse_kv(text)
+    version: str = get_version(parsed)
+    dest: pathlib.Path = VERSIONS_DIR / channel / version
 
     if dest.exists():
-        return {
-            "channel": channel,
-            "version": version,
-            "status": "unchanged",
-            "captured": [],
-            "unavailable": [],
-        }
+        return ChannelResult(
+            channel=channel,
+            version=version,
+            status="unchanged",
+            captured=[],
+            unavailable=[],
+        )
 
-    appbase = _resolve_appbase(parsed, version, base)
+    appbase: str = _resolve_appbase(parsed, version, base)
     captured: dict[str, str | None] = {}
     unavailable: dict[str, int] = {}
     for name in MANIFESTS:
-        url = f"{appbase}/{name}"
+        url: str = f"{appbase}/{name}"
         try:
-            body = fetch_text(url)
+            body: str = fetch_text(url)
         except Unavailable as exc:
             captured[name] = None
             unavailable[name] = exc.status
@@ -105,28 +120,28 @@ def check_channel(channel: str, base: str, *, dry_run: bool) -> dict:
     if captured.get("getdown.txt") is None:
         raise ValidationError(f"{appbase}/getdown.txt missing for new version {version}")
 
-    got = [n for n, v in captured.items() if v is not None]
+    got: list[str] = [n for n, v in captured.items() if v is not None]
     if not dry_run:
         dest.mkdir(parents=True, exist_ok=True)
-        for name, body in captured.items():
-            if body is not None:
-                (dest / name).write_text(body, encoding="utf-8", newline="\n")
+        for name, body_or_none in captured.items():
+            if body_or_none is not None:
+                (dest / name).write_text(body_or_none, encoding="utf-8", newline="\n")
         if unavailable:
             _write_manifest_notes(dest, appbase, unavailable)
         _append_timeline(channel, version, got)
 
-    return {
-        "channel": channel,
-        "version": version,
-        "status": "new",
-        "captured": got,
-        "unavailable": sorted(unavailable),
-    }
+    return ChannelResult(
+        channel=channel,
+        version=version,
+        status="new",
+        captured=got,
+        unavailable=sorted(unavailable),
+    )
 
 
 def _write_manifest_notes(dest: pathlib.Path, appbase: str, unavailable: dict[str, int]) -> None:
-    date = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
-    lines = [
+    date: str = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    lines: list[str] = [
         f"# Capture notes for {dest.name}",
         "",
         f"Captured {date} from {appbase}",
@@ -140,14 +155,14 @@ def _write_manifest_notes(dest: pathlib.Path, appbase: str, unavailable: dict[st
 
 
 def _append_timeline(channel: str, version: str, manifests: list[str]) -> None:
-    date = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
-    short = ", ".join(m.removesuffix(".txt") for m in manifests)
-    row = f"| {date} | `{channel}` | `{version}` | {short} |\n"
+    date: str = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    short: str = ", ".join(m.removesuffix(".txt") for m in manifests)
+    row: str = f"| {date} | `{channel}` | `{version}` | {short} |\n"
 
     if not TIMELINE_FILE.exists():
         TIMELINE_FILE.write_text(_TIMELINE_HEADER, encoding="utf-8", newline="\n")
 
-    lines = TIMELINE_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines: list[str] = TIMELINE_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
     for i, line in enumerate(lines):
         if line.strip() == TIMELINE_MARKER:
             lines.insert(i + 1, row)
@@ -157,7 +172,7 @@ def _append_timeline(channel: str, version: str, manifests: list[str]) -> None:
     TIMELINE_FILE.write_text("".join(lines), encoding="utf-8", newline="\n")
 
 
-_TIMELINE_HEADER = f"""# Spiral Knights version timeline
+_TIMELINE_HEADER: Final[str] = f"""# Spiral Knights version timeline
 
 Every client version seen by the daily poller, newest first. Each version's
 `getdown.txt` / `digest.txt` / `digest2.txt` are stored under `versions/`.
@@ -168,37 +183,38 @@ Every client version seen by the daily poller, newest first. Each version's
 """
 
 
-def _write_state(results: list[dict], errors: list[tuple[str, str]]) -> None:
-    channels: dict[str, dict] = {}
+def _write_state(results: list[ChannelResult], errors: list[ChannelError]) -> None:
+    channels: dict[str, dict[str, str]] = {}
     for r in results:
         channels[r["channel"]] = {"version": r["version"], "status": r["status"]}
     for channel, message in errors:
         channels.setdefault(channel, {})["error"] = message
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, object] = {"checked_at": _now(), "channels": channels}
     STATE_FILE.write_text(
-        json.dumps({"checked_at": _now(), "channels": channels}, indent=2) + "\n",
+        json.dumps(payload, indent=2) + "\n",
         encoding="utf-8",
         newline="\n",
     )
 
 
 def _emit_output(key: str, value: str) -> None:
-    path = os.environ.get("GITHUB_OUTPUT")
+    path: str | None = os.environ.get("GITHUB_OUTPUT")
     if path:
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(f"{key}={value}\n")
 
 
-def _commit_message(results: list[dict]) -> str:
-    new = [r for r in results if r["status"] == "new"]
+def _commit_message(results: list[ChannelResult]) -> str:
+    new: list[ChannelResult] = [r for r in results if r["status"] == "new"]
     if new:
-        parts = ", ".join(f"{r['channel']} {r['version']}" for r in new)
+        parts: str = ", ".join(f"{r['channel']} {r['version']}" for r in new)
         return f"catalog: SK {parts}"
-    date = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    date: str = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     return f"catalog: poll {date} (no change)"
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="fetch and report, write nothing")
     parser.add_argument("--base-url", default=DEFAULT_BASE, help="override the Getdown base URL")
@@ -207,19 +223,25 @@ def main(argv: list[str] | None = None) -> int:
         default=",".join(CHANNELS),
         help="comma-separated channels to check",
     )
-    args = parser.parse_args(argv)
-    channels = [c.strip() for c in args.channels.split(",") if c.strip()]
+    return parser
 
-    results: list[dict] = []
-    validation_failed = False
-    fetch_errors: list[tuple[str, str]] = []
+
+def main(argv: list[str] | None = None) -> int:
+    args: argparse.Namespace = _build_parser().parse_args(argv)
+    dry_run: bool = args.dry_run
+    base_url: str = args.base_url
+    channels: list[str] = [c.strip() for c in args.channels.split(",") if c.strip()]
+
+    results: list[ChannelResult] = []
+    fetch_errors: list[ChannelError] = []
+    validation_failed: bool = False
 
     for channel in channels:
         try:
-            result = check_channel(channel, args.base_url, dry_run=args.dry_run)
+            result: ChannelResult = check_channel(channel, base_url, dry_run=dry_run)
             results.append(result)
-            marker = {"new": "NEW  ", "unchanged": "  -  "}.get(result["status"], "     ")
-            extra = f" [{', '.join(result['captured'])}]" if result["captured"] else ""
+            marker: str = {"new": "NEW  ", "unchanged": "  -  "}.get(result["status"], "     ")
+            extra: str = f" [{', '.join(result['captured'])}]" if result["captured"] else ""
             print(f"{marker} {channel:8} {result['version']}{extra}")
         except ValidationError as exc:
             validation_failed = True
@@ -229,12 +251,15 @@ def main(argv: list[str] | None = None) -> int:
             fetch_errors.append((channel, f"fetch: {exc}"))
             print(f"WARN  {channel:8} unreachable: {exc}", file=sys.stderr)
 
-    if not args.dry_run:
+    if not dry_run:
         _write_state(results, fetch_errors)
+        new_count: int = sum(1 for r in results if r["status"] == "new")
         _emit_output("commit_msg", _commit_message(results))
-        _emit_output("new_versions", str(sum(1 for r in results if r["status"] == "new")))
+        _emit_output("new_versions", str(new_count))
 
-    all_unreachable = bool(channels) and len(fetch_errors) == len(channels) and not validation_failed
+    all_unreachable: bool = (
+        bool(channels) and len(fetch_errors) == len(channels) and not validation_failed
+    )
     if validation_failed:
         print("One or more manifests failed validation.", file=sys.stderr)
         return 1

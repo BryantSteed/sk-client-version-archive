@@ -41,11 +41,15 @@ involving the actual client jars lives elsewhere and is not public.
 python -m catalog.poll --dry-run     # fetch + report, write nothing
 python -m catalog.poll               # real run (writes files, updates state)
 
+python -m venv .venv && . .venv/Scripts/activate   # (or .venv/bin/activate)
 pip install -e ".[dev]"
 pytest                               # offline; uses recovered manifests as fixtures
+mypy                                 # strict type check (catalog/ + tests/)
 ```
 
-`--base-url` and `--channels` override the defaults for testing.
+`--base-url` and `--channels` override the defaults for testing. CI
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs `mypy` and
+`pytest` on every push and PR.
 
 ## Design notes
 

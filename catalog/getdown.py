@@ -8,26 +8,32 @@ keys, and optional ``[platform]`` tags prefixing some values. ``digest.txt`` /
 from __future__ import annotations
 
 import re
+from typing import Final
 
-_VERSION_RE = re.compile(r"^\d{14}$")
-_HASH_LINE_RE = re.compile(r"^\S.* = [0-9a-fA-F]{32,128}\s*$")
+#: A parsed Getdown key/value file: each key maps to its list of values, in
+#: file order (keys such as ``code`` and ``resource`` legitimately repeat).
+GetdownData = dict[str, list[str]]
+
+_VERSION_RE: Final[re.Pattern[str]] = re.compile(r"^\d{14}$")
+_HASH_LINE_RE: Final[re.Pattern[str]] = re.compile(r"^\S.* = [0-9a-fA-F]{32,128}\s*$")
+_HTML_HEAD_BYTES: Final[int] = 512
 
 
 def looks_like_html(text: str) -> bool:
     """True if the body looks like an HTML error/redirect page rather than data."""
-    head = text.lstrip()[:512].lower()
+    head: str = text.lstrip()[:_HTML_HEAD_BYTES].lower()
     return head.startswith("<!doctype html") or head.startswith("<html") or "<title>" in head
 
 
-def parse_kv(text: str) -> dict[str, list[str]]:
+def parse_kv(text: str) -> GetdownData:
     """Parse a Getdown-style ``key = value`` file into ``{key: [values]}``.
 
     Comments (``#``) and blank lines are skipped. Values keep any leading
     ``[platform]`` tag verbatim.
     """
-    out: dict[str, list[str]] = {}
+    out: GetdownData = {}
     for raw in text.splitlines():
-        line = raw.strip()
+        line: str = raw.strip()
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
@@ -37,20 +43,20 @@ def parse_kv(text: str) -> dict[str, list[str]]:
     return out
 
 
-def get_version(parsed: dict[str, list[str]]) -> str:
+def get_version(parsed: GetdownData) -> str:
     """Return the single ``version`` value, validated as a 14-digit stamp."""
-    values = parsed.get("version") or []
+    values: list[str] = parsed.get("version") or []
     if not values:
         raise ValueError("no 'version' key in getdown.txt")
-    version = values[0]
+    version: str = values[0]
     if not _VERSION_RE.match(version):
         raise ValueError(f"version {version!r} is not a 14-digit YYYYMMDDhhmmss stamp")
     return version
 
 
-def get_appbase_template(parsed: dict[str, list[str]]) -> str | None:
+def get_appbase_template(parsed: GetdownData) -> str | None:
     """Return the ``appbase`` template (contains ``%VERSION%``), or None."""
-    values = parsed.get("appbase") or []
+    values: list[str] = parsed.get("appbase") or []
     return values[0] if values else None
 
 
@@ -62,8 +68,8 @@ def is_valid_getdown(text: str, *, expected_version: str | None = None) -> bool:
     if looks_like_html(text):
         return False
     try:
-        parsed = parse_kv(text)
-        version = get_version(parsed)
+        parsed: GetdownData = parse_kv(text)
+        version: str = get_version(parsed)
     except ValueError:
         return False
     return expected_version is None or version == expected_version
