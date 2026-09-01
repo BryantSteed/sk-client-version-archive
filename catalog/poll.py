@@ -99,14 +99,13 @@ def check_channel(channel: str, base: str, *, dry_run: bool) -> ChannelResult:
         )
 
     appbase: str = _resolve_appbase(parsed, version, base)
-    captured: dict[str, str | None] = {}
-    unavailable: dict[str, int] = {}
+    bodies: dict[str, str] = {}  # manifest name -> content, retrieved ones only
+    unavailable: dict[str, int] = {}  # manifest name -> HTTP status for 403 / 404
     for name in MANIFESTS:
         url: str = f"{appbase}/{name}"
         try:
             body: str = fetch_text(url)
         except Unavailable as exc:
-            captured[name] = None
             unavailable[name] = exc.status
             continue
 
@@ -115,26 +114,25 @@ def check_channel(channel: str, base: str, *, dry_run: bool) -> ChannelResult:
                 raise ValidationError(f"{url} version mismatch or not a getdown.txt")
         elif not is_valid_digest(body):
             raise ValidationError(f"{url} does not look like a digest manifest")
-        captured[name] = body
+        bodies[name] = body
 
-    if captured.get("getdown.txt") is None:
+    if "getdown.txt" not in bodies:
         raise ValidationError(f"{appbase}/getdown.txt missing for new version {version}")
 
-    got: list[str] = [n for n, v in captured.items() if v is not None]
+    captured: list[str] = list(bodies)  # manifest names actually retrieved
     if not dry_run:
         dest.mkdir(parents=True, exist_ok=True)
-        for name, body_or_none in captured.items():
-            if body_or_none is not None:
-                (dest / name).write_text(body_or_none, encoding="utf-8", newline="\n")
+        for name, body in bodies.items():
+            (dest / name).write_text(body, encoding="utf-8", newline="\n")
         if unavailable:
             _write_manifest_notes(dest, appbase, unavailable)
-        _append_timeline(channel, version, got)
+        _append_timeline(channel, version, captured)
 
     return ChannelResult(
         channel=channel,
         version=version,
         status="new",
-        captured=got,
+        captured=captured,
         unavailable=sorted(unavailable),
     )
 
