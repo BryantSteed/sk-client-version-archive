@@ -3,9 +3,9 @@
 1. GET ``<base>/latest/getdown.txt`` and read its ``version``.
 2. If ``versions/latest/<version>/`` already exists, nothing to do.
 3. Otherwise resolve that version's ``appbase`` and capture the three text
-   manifests (``getdown.txt``, ``digest.txt``, ``digest2.txt``) into the repo,
-   then append a row to ``TIMELINE.md``.
+   manifests (``getdown.txt``, ``digest.txt``, ``digest2.txt``) into the repo.
 
+``TIMELINE.md`` is regenerated from the ``versions/`` tree every run, and
 ``state/last-check.json`` is rewritten every run so the commit history doubles
 as a liveness signal for the scheduled workflow.
 
@@ -36,7 +36,6 @@ ROOT: Final[pathlib.Path] = pathlib.Path(__file__).resolve().parent.parent
 VERSIONS_DIR: Final[pathlib.Path] = ROOT / "versions"
 STATE_FILE: Final[pathlib.Path] = ROOT / "state" / "last-check.json"
 TIMELINE_FILE: Final[pathlib.Path] = ROOT / "TIMELINE.md"
-TIMELINE_MARKER: Final[str] = "<!-- rows -->"
 
 DEFAULT_BASE: Final[str] = "https://gamemedia2.spiralknights.com/spiral"
 # Only latest/ is tracked. client/ has been frozen at 20260209004019 (the last
@@ -56,6 +55,16 @@ class ChannelResult(TypedDict):
     status: ChannelStatus
     captured: list[str]  # manifest filenames actually written / fetched
     unavailable: list[str]  # manifest filenames that 403'd or 404'd
+
+
+class VersionEntry(TypedDict):
+    """One recorded version, as it appears in ``versions/index.json``."""
+
+    version: str
+    channel: str
+    released: str | None  # ISO-8601 UTC decoded from the version stamp, or None
+    manifests: list[str]  # manifest filenames present on disk, sorted
+    path: str  # repo-relative directory, e.g. "versions/latest/20260828143805"
 
 
 #: ``(channel, message)`` — a channel that could not be checked this run.
@@ -126,7 +135,6 @@ def check_channel(channel: str, base: str, *, dry_run: bool) -> ChannelResult:
             (dest / name).write_text(body, encoding="utf-8", newline="\n")
         if unavailable:
             _write_manifest_notes(dest, appbase, unavailable)
-        _append_timeline(channel, version, captured)
 
     return ChannelResult(
         channel=channel,
@@ -152,33 +160,67 @@ def _write_manifest_notes(dest: pathlib.Path, appbase: str, unavailable: dict[st
     (dest / "CAPTURE-NOTES.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def _append_timeline(channel: str, version: str, manifests: list[str]) -> None:
-    date: str = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
-    short: str = ", ".join(m.removesuffix(".txt") for m in manifests)
-    row: str = f"| {date} | `{channel}` | `{version}` | {short} |\n"
-
-    if not TIMELINE_FILE.exists():
-        TIMELINE_FILE.write_text(_TIMELINE_HEADER, encoding="utf-8", newline="\n")
-
-    lines: list[str] = TIMELINE_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
-    for i, line in enumerate(lines):
-        if line.strip() == TIMELINE_MARKER:
-            lines.insert(i + 1, row)
-            break
-    else:  # no marker — append at end
-        lines.append(row)
-    TIMELINE_FILE.write_text("".join(lines), encoding="utf-8", newline="\n")
+def _release_iso(version: str) -> str | None:
+    """Decode a 14-digit ``YYYYMMDDhhmmss`` stamp to an ISO-8601 UTC string."""
+    try:
+        stamp = dt.datetime.strptime(version, "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+    return stamp.replace(tzinfo=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-_TIMELINE_HEADER: Final[str] = f"""# Spiral Knights version timeline
+def scan_versions() -> list[VersionEntry]:
+    """Every recorded version, newest first — a pure projection of ``versions/``."""
+    entries: list[VersionEntry] = []
+    for vdir in VERSIONS_DIR.glob("*/*"):
+        if not vdir.is_dir():
+            continue
+        entries.append(
+            VersionEntry(
+                version=vdir.name,
+                channel=vdir.parent.name,
+                released=_release_iso(vdir.name),
+                manifests=sorted(p.name for p in vdir.glob("*.txt")),
+                path=f"versions/{vdir.parent.name}/{vdir.name}",
+            )
+        )
+    entries.sort(key=lambda e: e["version"], reverse=True)
+    return entries
 
-Every client version seen by the daily poller, newest first. Each version's
-`getdown.txt` / `digest.txt` / `digest2.txt` are stored under `versions/`.
 
-| First seen (UTC) | Channel | Version | Manifests |
-|---|---|---|---|
-{TIMELINE_MARKER}
-"""
+def _write_index(entries: list[VersionEntry]) -> None:
+    """Write ``versions/index.json`` — the machine-readable catalog.
+
+    Pure function of ``entries`` (no timestamp), so it only changes when the
+    recorded version set changes.
+    """
+    latest: str | None = next((e["version"] for e in entries if e["channel"] == "latest"), None)
+    doc: dict[str, object] = {"latest": latest, "versions": entries}
+    VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    (VERSIONS_DIR / "index.json").write_text(
+        json.dumps(doc, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+
+
+_TIMELINE_HEADER: Final[str] = (
+    "# Spiral Knights version timeline\n\n"
+    "Regenerated from `versions/` on every run, newest first. For programmatic\n"
+    "use read [`versions/index.json`](versions/index.json) instead.\n\n"
+    "| Released (UTC) | Channel | Version | Manifests |\n"
+    "|---|---|---|---|\n"
+)
+
+
+def _write_timeline(entries: list[VersionEntry]) -> None:
+    """Regenerate ``TIMELINE.md`` — the human-readable view of the same data."""
+    rows: list[str] = []
+    for e in entries:
+        released = e["released"][:16].replace("T", " ") if e["released"] else "?"
+        manifests = ", ".join(m.removesuffix(".txt") for m in e["manifests"])
+        rows.append(f"| {released} | `{e['channel']}` | `{e['version']}` | {manifests} |")
+    TIMELINE_FILE.write_text(
+        _TIMELINE_HEADER + "\n".join(rows) + "\n", encoding="utf-8", newline="\n"
+    )
 
 
 def _write_state(results: list[ChannelResult], errors: list[ChannelError]) -> None:
@@ -250,6 +292,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"WARN  {channel:8} unreachable: {exc}", file=sys.stderr)
 
     if not dry_run:
+        entries: list[VersionEntry] = scan_versions()
+        _write_index(entries)
+        _write_timeline(entries)
         _write_state(results, fetch_errors)
         new_count: int = sum(1 for r in results if r["status"] == "new")
         _emit_output("commit_msg", _commit_message(results))

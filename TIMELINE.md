@@ -1,9 +1,8 @@
 # Spiral Knights version timeline
 
-Every client version seen by the daily poller, newest first. Each version's
-`getdown.txt` / `digest.txt` / `digest2.txt` are stored under `versions/`.
+Regenerated from `versions/` on every run, newest first. For programmatic
+use read [`versions/index.json`](versions/index.json) instead.
 
-| First seen (UTC) | Channel | Version | Manifests |
+| Released (UTC) | Channel | Version | Manifests |
 |---|---|---|---|
-<!-- rows -->
-| 2026-09-01 | `latest` | `20260828143805` | getdown, digest, digest2 |
+| 2026-08-28 14:38 | `latest` | `20260828143805` | digest, digest2, getdown |

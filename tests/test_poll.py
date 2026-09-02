@@ -58,7 +58,6 @@ def test_new_version_is_captured(repo: pathlib.Path, monkeypatch: pytest.MonkeyP
     assert (vdir / "digest.txt").exists()
     assert not (vdir / "digest2.txt").exists()
     assert "digest2.txt" in (vdir / "CAPTURE-NOTES.md").read_text(encoding="utf-8")
-    assert poll.TIMELINE_MARKER in (repo / "TIMELINE.md").read_text(encoding="utf-8")
 
 
 def test_known_version_is_unchanged(repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,6 +110,43 @@ def test_version_mismatch_in_appbase_is_rejected(
     monkeypatch.setattr(poll, "fetch_text", _fake_fetch(responses))
     with pytest.raises(poll.ValidationError):
         poll.check_channel("latest", BASE, dry_run=False)
+
+
+def test_index_and_timeline_regenerate_from_versions(
+    repo: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    specs = {
+        "20260828143805": ("getdown.txt", "digest.txt", "digest2.txt"),
+        "20260807115345": ("getdown.txt", "digest.txt"),
+    }
+    for version, manifests in specs.items():
+        vdir = repo / "versions" / "latest" / version
+        vdir.mkdir(parents=True)
+        for manifest in manifests:
+            (vdir / manifest).write_text("x", encoding="utf-8")
+
+    entries = poll.scan_versions()
+    poll._write_index(entries)
+    poll._write_timeline(entries)
+
+    index = json.loads((repo / "versions" / "index.json").read_text(encoding="utf-8"))
+    assert index["latest"] == "20260828143805"
+    assert [e["version"] for e in index["versions"]] == ["20260828143805", "20260807115345"]
+
+    newest = index["versions"][0]
+    assert newest["channel"] == "latest"
+    assert newest["released"] == "2026-08-28T14:38:05Z"
+    assert newest["manifests"] == ["digest.txt", "digest2.txt", "getdown.txt"]
+    assert newest["path"] == "versions/latest/20260828143805"
+
+    timeline = (repo / "TIMELINE.md").read_text(encoding="utf-8")
+    assert "`20260828143805`" in timeline
+    assert "2026-08-28 14:38" in timeline
+
+    # regeneration is a pure function of versions/ — byte-identical on a re-run
+    before = (repo / "versions" / "index.json").read_bytes()
+    poll._write_index(poll.scan_versions())
+    assert (repo / "versions" / "index.json").read_bytes() == before
 
 
 def test_main_all_unreachable_exits_1(

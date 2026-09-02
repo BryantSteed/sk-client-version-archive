@@ -20,14 +20,51 @@ once a day:
    versions/<channel>/<version>/digest2.txt   # SHA-256 manifest of every shipped file
    ```
 
-   and append a row to [`TIMELINE.md`](TIMELINE.md).
+`versions/index.json` and [`TIMELINE.md`](TIMELINE.md) are then regenerated as
+projections of the `versions/` tree. `state/last-check.json` is rewritten every
+run, so the commit history is also a liveness record for the scheduled job.
 
 Only the `latest/` channel is tracked. The `client/` channel has been frozen at
 `20260209004019` (the last pre-64-bit build) since February 2026; pass
 `--channels client` for a one-off capture if it ever moves.
 
-`state/last-check.json` is rewritten every run, so the commit history is also a
-liveness record for the scheduled job.
+## Consuming the catalog
+
+Everything is plain files on the `main` branch — fetch them over raw HTTP, no
+API or auth:
+
+```
+https://raw.githubusercontent.com/<owner>/<repo>/main/versions/index.json
+```
+
+`index.json` is the machine-readable catalog, newest first:
+
+```json
+{
+  "latest": "20260828143805",
+  "versions": [
+    {
+      "version": "20260828143805",
+      "channel": "latest",
+      "released": "2026-08-28T14:38:05Z",
+      "manifests": ["digest.txt", "digest2.txt", "getdown.txt"],
+      "path": "versions/latest/20260828143805"
+    }
+  ]
+}
+```
+
+- `latest` — the newest version on the `latest` channel.
+- `versions[]` — every recorded version, sorted newest first. Version strings
+  are `YYYYMMDDhhmmss`, so they also sort chronologically.
+- `released` — decoded from the version stamp (UTC); `null` if it isn't a stamp.
+- `manifests` — which manifest files are present for that version (older builds
+  predate `digest2.txt`).
+- `path` — repo-relative directory; fetch a manifest at
+  `https://raw.githubusercontent.com/<owner>/<repo>/main/<path>/digest2.txt`.
+
+`index.json` has no timestamp of its own — it changes only when the recorded
+version set changes, so a diff on it means "new version".
 
 ### Scope
 
