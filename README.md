@@ -1,4 +1,4 @@
-# sk-client-catalog
+# sk-client-version-archive
 
 A daily poller that tracks **Spiral Knights** client versions using the game's
 own [Getdown](https://github.com/threerings/getdown) update metadata — no game
