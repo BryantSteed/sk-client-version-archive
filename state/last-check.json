@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-09-09T15:09:10Z",
+  "checked_at": "2026-09-10T15:01:13Z",
   "channels": {
     "latest": {
-      "version": "20260902131437",
-      "status": "unchanged"
+      "version": "20260909070750",
+      "status": "new"
     }
   }
 }
