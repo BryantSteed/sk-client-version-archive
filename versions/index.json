@@ -1,6 +1,17 @@
 {
-  "latest": "20261022005304",
+  "latest": "20261028041525",
   "versions": [
+    {
+      "version": "20261028041525",
+      "channel": "latest",
+      "released": "2026-10-28T04:15:25Z",
+      "manifests": [
+        "digest.txt",
+        "digest2.txt",
+        "getdown.txt"
+      ],
+      "path": "versions/latest/20261028041525"
+    },
     {
       "version": "20261022005304",
       "channel": "latest",
