@@ -5,6 +5,7 @@ use read [`versions/index.json`](versions/index.json) instead.
 
 | Released (UTC) | Channel | Version | Manifests |
 |---|---|---|---|
+| 2026-11-20 15:58 | `latest` | `20261120155806` | digest, digest2, getdown |
 | 2026-11-10 04:46 | `latest` | `20261110044614` | digest, digest2, getdown |
 | 2026-10-28 04:15 | `latest` | `20261028041525` | digest, digest2, getdown |
 | 2026-10-22 00:53 | `latest` | `20261022005304` | digest, digest2, getdown |
